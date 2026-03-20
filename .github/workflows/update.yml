@@ -1,0 +1,32 @@
+name: Auto Update Notion Data
+on:
+  schedule:
+    - cron: '*/15 * * * *' # 15분마다 노션 데이터를 갱신합니다.
+  workflow_dispatch: # 수동으로도 실행할 수 있게 해줍니다.
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Run script
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+        run: python update.py
+        
+      - name: Commit and push changes
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add data.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto update Notion data" && git push)
