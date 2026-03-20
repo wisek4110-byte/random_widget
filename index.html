@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notion Widget</title>
+<style>
+    /* 전체 화면 및 위젯 기본 형태 (350px 정사각형, 라운드 처리) */
+    body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: transparent; font-family: 'Pretendard', sans-serif; }
+    .widget { 
+        width: 350px; height: 350px; border-radius: 20px; position: relative; 
+        background-size: cover; background-position: center; overflow: hidden; 
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; flex-direction: column; background-color: #333;
+    }
+    
+    /* 배경 밝기에 따라 변하는 오버레이 막 */
+    .overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.4); z-index: 1; transition: background 0.3s; }
+    
+    /* 텍스트 내용 */
+    .content { position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; padding: 25px; text-align: center; color: white; text-shadow: 1px 1px 4px rgba(0,0,0,0.7); word-break: keep-all;}
+    .title { font-weight: bold; margin-bottom: 12px; }
+    .text { font-weight: normal; line-height: 1.4; }
+    
+    /* ⚙️ 톱니바퀴 설정 버튼 */
+    .settings-btn { position: absolute; top: 15px; right: 15px; z-index: 10; cursor: pointer; font-size: 22px; opacity: 0.5; transition: opacity 0.2s; background: none; border: none; padding: 0; }
+    .settings-btn:hover { opacity: 1; }
+    
+    /* 설정 패널 */
+    .settings-panel { position: absolute; top: 45px; right: 15px; background: rgba(255,255,255,0.95); padding: 15px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); z-index: 10; display: none; flex-direction: column; gap: 10px; color: #333; font-size: 14px; font-weight: bold; }
+    .settings-panel.active { display: flex; }
+    .settings-panel select { padding: 5px; border-radius: 4px; border: 1px solid #ccc; font-family: inherit; }
+    #closeSettings { margin-top: 5px; cursor: pointer; padding: 5px; border-radius: 4px; border: none; background: #eee; font-weight: bold; }
+    #closeSettings:hover { background: #ddd; }
+    
+    .loading { position: relative; z-index: 2; color: white; text-align: center; margin-top: 150px; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="widget" id="widget">
+    <div class="overlay" id="overlay"></div>
+    <button class="settings-btn" id="settingsBtn">⚙️</button>
+    
+    <div class="settings-panel" id="settingsPanel">
+        <label>글자 크기:
+            <select id="fontSize">
+                <option value="small">작게</option>
+                <option value="medium" selected>보통</option>
+                <option value="large">크게</option>
+            </select>
+        </label>
+        <label>제목/텍스트 위치:
+            <select id="layoutOrder">
+                <option value="title-first" selected>제목 위, 텍스트 아래</option>
+                <option value="text-first">텍스트 위, 제목 아래</option>
+            </select>
+        </label>
+        <button id="closeSettings">닫기</button>
+    </div>
+
+    <div class="content" id="content">
+        <div class="loading">동기화 중입니다...<br>(초기 설정 시 몇 분 소요될 수 있습니다)</div>
+    </div>
+</div>
+
+<script>
+    const widget = document.getElementById('widget');
+    const content = document.getElementById('content');
+    const overlay = document.getElementById('overlay');
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsPanel = document.getElementById('settingsPanel');
+    const fontSizeSelect = document.getElementById('fontSize');
+    const layoutOrderSelect = document.getElementById('layoutOrder');
+    const closeSettings = document.getElementById('closeSettings');
+
+    // 설정창 열기/닫기
+    settingsBtn.addEventListener('click', () => settingsPanel.classList.toggle('active'));
+    closeSettings.addEventListener('click', () => settingsPanel.classList.remove('active'));
+
+    // 1. 설정 적용 함수
+    const applySettings = () => {
+        const size = fontSizeSelect.value;
+        const layout = layoutOrderSelect.value;
+        
+        // 위치 배열 설정
+        content.style.flexDirection = layout === 'title-first' ? 'column' : 'column-reverse';
+        
+        // 글씨 크기 설정
+        const sizes = { small: { t: '16px', txt: '13px' }, medium: { t: '22px', txt: '16px' }, large: { t: '28px', txt: '19px' } };
+        const titleEl = document.querySelector('.title');
+        const textEl = document.querySelector('.text');
+        if(titleEl) { titleEl.style.fontSize = sizes[size].t; titleEl.style.marginBottom = layout === 'title-first' ? '12px' : '0'; titleEl.style.marginTop = layout === 'text-first' ? '12px' : '0'; }
+        if(textEl) textEl.style.fontSize = sizes[size].txt;
+    };
+
+    // 설정 변경 시 저장
+    fontSizeSelect.addEventListener('change', () => { localStorage.setItem('widget_fs', fontSizeSelect.value); applySettings(); });
+    layoutOrderSelect.addEventListener('change', () => { localStorage.setItem('widget_lo', layoutOrderSelect.value); applySettings(); });
+
+    // 2. 배경 이미지 밝기 감지 함수 (밝으면 검은글씨, 어두우면 흰글씨)
+    const applyBrightness = (imgUrl) => {
+        const img = new Image();
+        img.crossOrigin = "Anonymous";
+        img.src = imgUrl;
+        img.onload = () => {
+            const cvs = document.createElement('canvas');
+            cvs.width = img.width; cvs.height = img.height;
+            const ctx = cvs.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            try {
+                const data = ctx.getImageData(0,0,cvs.width,cvs.height).data;
+                let sum = 0;
+                for(let i=0; i<data.length; i+=4) sum += (data[i] + data[i+1] + data[i+2]) / 3;
+                const brightness = sum / (img.width * img.height);
+                
+                if(brightness >= 130) { // 밝은 배경
+                    overlay.style.background = 'rgba(255,255,255,0.6)';
+                    content.style.color = '#111';
+                    content.style.textShadow = 'none';
+                    settingsBtn.style.color = '#111';
+                } else { // 어두운 배경
+                    overlay.style.background = 'rgba(0,0,0,0.5)';
+                    content.style.color = '#fff';
+                    content.style.textShadow = '1px 1px 4px rgba(0,0,0,0.8)';
+                    settingsBtn.style.color = '#fff';
+                }
+            } catch(e) { /* 보안상 캔버스 접근 불가 시 기본 어두운 테마 유지 */ }
+        };
+    };
+
+    // 3. 깃허브 로봇이 만든 노션 데이터 가져오기 (캐시 무시)
+    fetch('./data.json?t=' + new Date().getTime())
+        .then(res => res.json())
+        .then(data => {
+            if(!data || data.length === 0) {
+                content.innerHTML = "<div style='font-size:14px;'>노션에 작성된 데이터가 없습니다.</div>";
+                return;
+            }
+            
+            // 새로고침 할 때마다 랜덤으로 하나 뽑기
+            const randomItem = data[Math.floor(Math.random() * data.length)];
+            
+            content.innerHTML = `
+                <div class="title">${randomItem.title}</div>
+                <div class="text">${randomItem.text}</div>
+            `;
+            
+            if(randomItem.image) {
+                widget.style.backgroundImage = `url('${randomItem.image}')`;
+                applyBrightness(randomItem.image);
+            }
+            
+            // 기존 설정 불러오기 및 적용
+            if(localStorage.getItem('widget_fs')) fontSizeSelect.value = localStorage.getItem('widget_fs');
+            if(localStorage.getItem('widget_lo')) layoutOrderSelect.value = localStorage.getItem('widget_lo');
+            applySettings();
+        })
+        .catch(err => {
+            console.log("데이터 아직 없음:", err);
+        });
+</script>
+</body>
+</html>
